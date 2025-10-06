@@ -120,10 +120,8 @@ class JamSessionManager(private val context: Context) {
             )
             _currentSession.value = updated
             
-            // Broadcast update to peers
-            if (_isHost.value) {
-                broadcastUpdate(songId, position, isPlaying, session.queueSongIds)
-            }
+            // Broadcast update to all peers (both host and participants can control)
+            broadcastUpdate(songId, position, isPlaying, session.queueSongIds)
         }
     }
     
@@ -135,10 +133,8 @@ class JamSessionManager(private val context: Context) {
             val updated = session.copy(queueSongIds = queueSongIds)
             _currentSession.value = updated
             
-            // Broadcast queue to peers
-            if (_isHost.value) {
-                broadcastQueue(queueSongIds)
-            }
+            // Broadcast queue to all peers (both host and participants can control)
+            broadcastQueue(queueSongIds)
         }
     }
     
@@ -239,34 +235,30 @@ class JamSessionManager(private val context: Context) {
                     }
                 }
                 "UPDATE" -> {
-                    // Playback state update from host
-                    if (!_isHost.value) {
-                        val songId = parts.getOrNull(1)?.takeIf { it != "null" }
-                        val position = parts.getOrNull(2)?.toLongOrNull() ?: 0
-                        val isPlaying = parts.getOrNull(3)?.toBoolean() ?: false
-                        
-                        _currentSession.value?.let { session ->
-                            _currentSession.value = session.copy(
-                                currentSongId = songId,
-                                currentPosition = position,
-                                isPlaying = isPlaying
-                            )
-                        }
+                    // Playback state update from any participant
+                    val songId = parts.getOrNull(1)?.takeIf { it != "null" }
+                    val position = parts.getOrNull(2)?.toLongOrNull() ?: 0
+                    val isPlaying = parts.getOrNull(3)?.toBoolean() ?: false
+                    
+                    _currentSession.value?.let { session ->
+                        _currentSession.value = session.copy(
+                            currentSongId = songId,
+                            currentPosition = position,
+                            isPlaying = isPlaying
+                        )
                     }
                 }
                 "QUEUE" -> {
-                    // Queue update from host
-                    if (!_isHost.value) {
-                        val queueData = parts.getOrNull(1) ?: return
-                        val queueIds = if (queueData.isNotEmpty()) {
-                            queueData.split(",")
-                        } else {
-                            emptyList()
-                        }
-                        
-                        _currentSession.value?.let { session ->
-                            _currentSession.value = session.copy(queueSongIds = queueIds)
-                        }
+                    // Queue update from any participant
+                    val queueData = parts.getOrNull(1) ?: return
+                    val queueIds = if (queueData.isNotEmpty()) {
+                        queueData.split(",")
+                    } else {
+                        emptyList()
+                    }
+                    
+                    _currentSession.value?.let { session ->
+                        _currentSession.value = session.copy(queueSongIds = queueIds)
                     }
                 }
                 "PRESENCE" -> {
