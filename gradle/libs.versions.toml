@@ -108,7 +108,6 @@ junit = { module = "junit:junit", version.ref = "junit" }
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 
 mqtt-client = { module = "org.eclipse.paho:org.eclipse.paho.client.mqttv3", version.ref = "mqttClient" }
-mqtt-android-service = { module = "org.eclipse.paho:org.eclipse.paho.android.service", version.ref = "mqttClient" }
 
 multidex = { module = "androidx.multidex:multidex", version.ref = "multidex" }
 

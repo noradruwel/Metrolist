@@ -184,48 +184,52 @@ fun JamSessionDialog(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                RoundedCornerShape(8.dp)
+                    // Create local variable to avoid smart cast issues with delegated property
+                    val session = currentSession
+                    if (session != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = session.sessionCode,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 4.sp
                             )
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                        }
+                        
                         Text(
-                            text = currentSession.sessionCode,
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 4.sp
+                            text = if (isHost) "You are the host" else "Host: ${session.hostName}",
+                            style = MaterialTheme.typography.bodyMedium
                         )
-                    }
-                    
-                    Text(
-                        text = if (isHost) "You are the host" else "Host: ${currentSession.hostName}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    
-                    Text(
-                        text = "${currentSession.participants.size} participant(s)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    OutlinedButton(
-                        onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("Session Code", currentSession.sessionCode)
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, "Code copied: ${currentSession.sessionCode}", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Copy Session Code")
+                        
+                        Text(
+                            text = "${session.participants.size} participant(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        OutlinedButton(
+                            onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Session Code", session.sessionCode)
+                                clipboard.setPrimaryClip(clip)
+                                Toast.makeText(context, "Code copied: ${session.sessionCode}", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Copy Session Code")
+                        }
                     }
                 }
             },
