@@ -99,6 +99,9 @@ class JamSessionManager(private val context: Context) {
             // Connect to MQTT broker and subscribe to topic
             connectToMqttBroker(sessionCode.uppercase(), userName)
             
+            // Request current state from other participants
+            requestCurrentState()
+            
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to join session", e)
@@ -232,6 +235,8 @@ class JamSessionManager(private val context: Context) {
                             )
                         }
                     }
+                    // Broadcast current state to the new participant
+                    broadcastCurrentState()
                 }
                 "UPDATE" -> {
                     // Playback state update from any participant
@@ -268,6 +273,10 @@ class JamSessionManager(private val context: Context) {
                             _currentSession.value = session.copy(hostName = hostName)
                         }
                     }
+                }
+                "REQUEST_STATE" -> {
+                    // New participant requesting current state
+                    broadcastCurrentState()
                 }
             }
         } catch (e: Exception) {
@@ -318,6 +327,36 @@ class JamSessionManager(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error publishing MQTT message", e)
+        }
+    }
+    
+    /**
+     * Request current state from other participants (called by new joiners)
+     */
+    private fun requestCurrentState() {
+        scope.launch {
+            try {
+                val message = "REQUEST_STATE|"
+                publishMessage(message)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting state", e)
+            }
+        }
+    }
+    
+    /**
+     * Broadcast current state to all participants (called by existing participants)
+     */
+    private fun broadcastCurrentState() {
+        _currentSession.value?.let { session ->
+            // Broadcast current playback state
+            if (session.currentSongId != null) {
+                broadcastUpdate(session.currentSongId, session.currentPosition, session.isPlaying, session.queueSongIds)
+            }
+            // Broadcast current queue
+            if (session.queueSongIds.isNotEmpty()) {
+                broadcastQueue(session.queueSongIds)
+            }
         }
     }
     

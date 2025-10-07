@@ -1,6 +1,7 @@
 package com.metrolist.music.playback
 
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -15,6 +16,7 @@ import com.metrolist.music.extensions.currentMetadata
 import com.metrolist.music.extensions.getCurrentQueueIndex
 import com.metrolist.music.extensions.getQueueWindows
 import com.metrolist.music.extensions.metadata
+import com.metrolist.music.extensions.toMediaItem
 import com.metrolist.music.playback.MusicService.MusicBinder
 import com.metrolist.music.playback.queues.Queue
 import com.metrolist.music.utils.JamSessionManager
@@ -204,6 +206,23 @@ class PlayerConnection(
         }
     }
 
+    override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+    ) {
+        // Sync manual seek operations to jam session
+        // Only broadcast if this was a manual seek (not triggered by sync)
+        if (jamSessionManager.isInSession() && !isSyncing && 
+            reason == Player.DISCONTINUITY_REASON_SEEK) {
+            jamSessionManager.updatePlaybackState(
+                mediaMetadata.value?.id,
+                player.currentPosition,
+                player.playWhenReady
+            )
+        }
+    }
+
     override fun onTimelineChanged(
         timeline: Timeline,
         reason: Int,
@@ -312,9 +331,29 @@ class PlayerConnection(
                     val queueHash = session.queueSongIds.hashCode()
                     if (queueHash != lastSyncedQueueHash && session.queueSongIds.isNotEmpty()) {
                         lastSyncedQueueHash = queueHash
-                        // Queue sync would require access to the song database
-                        // For now, just log it
-                        // TODO: Implement queue synchronization with database access
+                        // Load songs from database and update player queue
+                        try {
+                            val songs = database.getSongsByIds(session.queueSongIds)
+                            // Maintain the order from the session
+                            val orderedSongs = session.queueSongIds.mapNotNull { songId ->
+                                songs.find { it.song.id == songId }
+                            }
+                            if (orderedSongs.isNotEmpty()) {
+                                val mediaItems = orderedSongs.map { it.toMediaItem() }
+                                player.setMediaItems(mediaItems, false)
+                                // Find the current song index and seek to it
+                                session.currentSongId?.let { currentSongId ->
+                                    val currentIndex = orderedSongs.indexOfFirst { it.song.id == currentSongId }
+                                    if (currentIndex >= 0) {
+                                        player.seekTo(currentIndex, session.currentPosition)
+                                        player.playWhenReady = session.isPlaying
+                                    }
+                                }
+                                player.prepare()
+                            }
+                        } catch (e: Exception) {
+                            Log.e("PlayerConnection", "Error syncing queue", e)
+                        }
                     }
                 } finally {
                     isSyncing = false // Re-enable broadcasting after sync
