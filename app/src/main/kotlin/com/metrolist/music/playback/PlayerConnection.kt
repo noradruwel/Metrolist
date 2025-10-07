@@ -17,6 +17,7 @@ import com.metrolist.music.extensions.getCurrentQueueIndex
 import com.metrolist.music.extensions.getQueueWindows
 import com.metrolist.music.extensions.metadata
 import com.metrolist.music.extensions.toMediaItem
+import com.metrolist.music.models.toMediaMetadata
 import com.metrolist.music.playback.MusicService.MusicBinder
 import com.metrolist.music.playback.queues.Queue
 import com.metrolist.music.utils.JamSessionManager
@@ -334,17 +335,50 @@ class PlayerConnection(
                         // Load songs from database and update player queue
                         try {
                             val songs = database.getSongsByIds(session.queueSongIds)
-                            // Maintain the order from the session
-                            val orderedSongs = session.queueSongIds.mapNotNull { songId ->
-                                songs.find { it.song.id == songId }
-                            }
                             
-                            // Log missing songs for debugging
+                            // Identify missing songs
                             val missingSongIds = session.queueSongIds.filter { songId ->
                                 songs.none { it.song.id == songId }
                             }
+                            
+                            // Fetch missing songs from YouTube if any
                             if (missingSongIds.isNotEmpty()) {
-                                Log.w("PlayerConnection", "Missing ${missingSongIds.size} songs from local database: ${missingSongIds.take(3)}")
+                                Log.i("PlayerConnection", "Fetching ${missingSongIds.size} missing songs from YouTube")
+                                try {
+                                    com.metrolist.innertube.YouTube.queue(missingSongIds).onSuccess { fetchedSongs ->
+                                        // Insert fetched songs into database
+                                        fetchedSongs.forEach { songItem ->
+                                            try {
+                                                database.transaction {
+                                                    insert(songItem.toMediaMetadata())
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e("PlayerConnection", "Error inserting song ${songItem.id}", e)
+                                            }
+                                        }
+                                        Log.i("PlayerConnection", "Successfully fetched and inserted ${fetchedSongs.size} songs")
+                                    }.onFailure { error ->
+                                        Log.e("PlayerConnection", "Failed to fetch missing songs from YouTube", error)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("PlayerConnection", "Error fetching songs from YouTube", e)
+                                }
+                            }
+                            
+                            // Reload songs from database after fetching missing ones
+                            val allSongs = database.getSongsByIds(session.queueSongIds)
+                            
+                            // Maintain the order from the session
+                            val orderedSongs = session.queueSongIds.mapNotNull { songId ->
+                                allSongs.find { it.song.id == songId }
+                            }
+                            
+                            // Log any songs that are still missing
+                            val stillMissing = session.queueSongIds.filter { songId ->
+                                allSongs.none { it.song.id == songId }
+                            }
+                            if (stillMissing.isNotEmpty()) {
+                                Log.w("PlayerConnection", "Still missing ${stillMissing.size} songs after YouTube fetch: ${stillMissing.take(3)}")
                             }
                             
                             if (orderedSongs.isNotEmpty()) {
@@ -360,7 +394,7 @@ class PlayerConnection(
                                 }
                                 player.prepare()
                             } else {
-                                Log.w("PlayerConnection", "No songs from queue found in local database")
+                                Log.w("PlayerConnection", "No songs from queue found even after YouTube fetch")
                             }
                         } catch (e: Exception) {
                             Log.e("PlayerConnection", "Error syncing queue", e)
