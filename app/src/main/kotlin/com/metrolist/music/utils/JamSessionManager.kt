@@ -219,8 +219,8 @@ class JamSessionManager(private val context: Context) {
                     keepAliveInterval = 60
                     // Set username and password if provided
                     if (username != null && password != null) {
-                        userName = username
-                        this.password = password.toCharArray()
+                        setUserName(username)
+                        setPassword(password.toCharArray())
                     }
                 }
                 

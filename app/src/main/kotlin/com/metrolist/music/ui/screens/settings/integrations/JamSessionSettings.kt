@@ -60,8 +60,7 @@ fun JamSessionSettings(
         EditTextPreference(
             title = { Text("MQTT Password (Optional)") },
             value = brokerPassword,
-            onValueChange = { brokerPassword = it },
-            isPassword = true
+            onValueChange = { brokerPassword = it }
         )
         
         PreferenceEntry(
