@@ -19,6 +19,8 @@ import androidx.navigation.NavController
 import com.metrolist.music.LocalPlayerAwareWindowInsets
 import com.metrolist.music.R
 import com.metrolist.music.constants.JamSessionBrokerUrlKey
+import com.metrolist.music.constants.JamSessionBrokerUsernameKey
+import com.metrolist.music.constants.JamSessionBrokerPasswordKey
 import com.metrolist.music.ui.component.EditTextPreference
 import com.metrolist.music.ui.component.IconButton
 import com.metrolist.music.ui.component.PreferenceEntry
@@ -33,6 +35,8 @@ fun JamSessionSettings(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     var brokerUrl by rememberPreference(JamSessionBrokerUrlKey, "tcp://broker.hivemq.com:1883")
+    var brokerUsername by rememberPreference(JamSessionBrokerUsernameKey, "")
+    var brokerPassword by rememberPreference(JamSessionBrokerPasswordKey, "")
 
     Column(
         Modifier
@@ -45,6 +49,19 @@ fun JamSessionSettings(
             title = { Text(stringResource(R.string.mqtt_broker_url)) },
             value = brokerUrl,
             onValueChange = { brokerUrl = it }
+        )
+        
+        EditTextPreference(
+            title = { Text("MQTT Username (Optional)") },
+            value = brokerUsername,
+            onValueChange = { brokerUsername = it }
+        )
+        
+        EditTextPreference(
+            title = { Text("MQTT Password (Optional)") },
+            value = brokerPassword,
+            onValueChange = { brokerPassword = it },
+            isPassword = true
         )
         
         PreferenceEntry(

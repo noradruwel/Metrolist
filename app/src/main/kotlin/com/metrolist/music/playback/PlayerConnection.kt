@@ -338,6 +338,15 @@ class PlayerConnection(
                             val orderedSongs = session.queueSongIds.mapNotNull { songId ->
                                 songs.find { it.song.id == songId }
                             }
+                            
+                            // Log missing songs for debugging
+                            val missingSongIds = session.queueSongIds.filter { songId ->
+                                songs.none { it.song.id == songId }
+                            }
+                            if (missingSongIds.isNotEmpty()) {
+                                Log.w("PlayerConnection", "Missing ${missingSongIds.size} songs from local database: ${missingSongIds.take(3)}")
+                            }
+                            
                             if (orderedSongs.isNotEmpty()) {
                                 val mediaItems = orderedSongs.map { it.toMediaItem() }
                                 player.setMediaItems(mediaItems, false)
@@ -350,6 +359,8 @@ class PlayerConnection(
                                     }
                                 }
                                 player.prepare()
+                            } else {
+                                Log.w("PlayerConnection", "No songs from queue found in local database")
                             }
                         } catch (e: Exception) {
                             Log.e("PlayerConnection", "Error syncing queue", e)

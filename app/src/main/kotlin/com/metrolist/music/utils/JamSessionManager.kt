@@ -47,11 +47,19 @@ class JamSessionManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var mqttClient: MqttClient? = null
     private var currentTopic: String? = null
+    private var currentUserName: String? = null
     
     companion object {
         private const val TAG = "JamSessionManager"
         private const val DEFAULT_BROKER_URL = "tcp://broker.hivemq.com:1883" // Public MQTT broker
         private const val TOPIC_PREFIX = "metrolist/jam/"
+    }
+    
+    init {
+        // Restore session on initialization if one exists
+        scope.launch {
+            restoreSession()
+        }
     }
     
     /**
@@ -61,6 +69,19 @@ class JamSessionManager(private val context: Context) {
         return context.dataStore.data
             .map { preferences ->
                 preferences[JamSessionBrokerUrlKey] ?: DEFAULT_BROKER_URL
+            }
+            .first()
+    }
+    
+    /**
+     * Get the MQTT broker credentials from preferences
+     */
+    private suspend fun getBrokerCredentials(): Pair<String?, String?> {
+        return context.dataStore.data
+            .map { preferences ->
+                val username = preferences[com.metrolist.music.constants.JamSessionBrokerUsernameKey]?.takeIf { it.isNotBlank() }
+                val password = preferences[com.metrolist.music.constants.JamSessionBrokerPasswordKey]?.takeIf { it.isNotBlank() }
+                Pair(username, password)
             }
             .first()
     }
@@ -77,6 +98,12 @@ class JamSessionManager(private val context: Context) {
             participants = listOf(hostName)
         )
         _isHost.value = true
+        currentUserName = hostName
+        
+        // Persist session state
+        scope.launch {
+            persistSession(sessionCode, true, hostName)
+        }
         
         // Connect to MQTT broker and subscribe to topic
         connectToMqttBroker(sessionCode, hostName)
@@ -95,6 +122,12 @@ class JamSessionManager(private val context: Context) {
                 participants = listOf(userName)
             )
             _isHost.value = false
+            currentUserName = userName
+            
+            // Persist session state
+            scope.launch {
+                persistSession(sessionCode.uppercase(), false, userName)
+            }
             
             // Connect to MQTT broker and subscribe to topic
             connectToMqttBroker(sessionCode.uppercase(), userName)
@@ -150,6 +183,10 @@ class JamSessionManager(private val context: Context) {
                 mqttClient?.close()
                 mqttClient = null
                 currentTopic = null
+                currentUserName = null
+                
+                // Clear persisted session
+                clearPersistedSession()
             } catch (e: Exception) {
                 Log.e(TAG, "Error disconnecting from MQTT", e)
             }
@@ -170,6 +207,7 @@ class JamSessionManager(private val context: Context) {
         scope.launch {
             try {
                 val brokerUrl = getBrokerUrl()
+                val (username, password) = getBrokerCredentials()
                 currentTopic = "$TOPIC_PREFIX$sessionCode"
                 
                 val clientId = "metrolist_${userName}_${System.currentTimeMillis()}"
@@ -179,6 +217,11 @@ class JamSessionManager(private val context: Context) {
                     isCleanSession = true
                     connectionTimeout = 10
                     keepAliveInterval = 60
+                    // Set username and password if provided
+                    if (username != null && password != null) {
+                        userName = username
+                        this.password = password.toCharArray()
+                    }
                 }
                 
                 mqttClient?.setCallback(object : MqttCallback {
@@ -365,5 +408,74 @@ class JamSessionManager(private val context: Context) {
      */
     private fun generateSessionCode(): String {
         return RandomStringUtils.insecure().next(6, false, true).uppercase()
+    }
+    
+    /**
+     * Persist session state to preferences
+     */
+    private suspend fun persistSession(sessionCode: String, isHost: Boolean, userName: String) {
+        context.dataStore.edit { preferences ->
+            preferences[com.metrolist.music.constants.JamSessionActiveCodeKey] = sessionCode
+            preferences[com.metrolist.music.constants.JamSessionIsHostKey] = isHost
+            preferences[com.metrolist.music.constants.JamSessionUserNameKey] = userName
+        }
+    }
+    
+    /**
+     * Clear persisted session state
+     */
+    private suspend fun clearPersistedSession() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(com.metrolist.music.constants.JamSessionActiveCodeKey)
+            preferences.remove(com.metrolist.music.constants.JamSessionIsHostKey)
+            preferences.remove(com.metrolist.music.constants.JamSessionUserNameKey)
+        }
+    }
+    
+    /**
+     * Restore session from preferences if exists
+     */
+    private suspend fun restoreSession() {
+        try {
+            val sessionCode = context.dataStore.data.map { 
+                it[com.metrolist.music.constants.JamSessionActiveCodeKey] 
+            }.first()
+            val isHost = context.dataStore.data.map { 
+                it[com.metrolist.music.constants.JamSessionIsHostKey] ?: false 
+            }.first()
+            val userName = context.dataStore.data.map { 
+                it[com.metrolist.music.constants.JamSessionUserNameKey] 
+            }.first()
+            
+            if (sessionCode != null && userName != null) {
+                Log.d(TAG, "Restoring session: $sessionCode")
+                _isHost.value = isHost
+                currentUserName = userName
+                
+                if (isHost) {
+                    _currentSession.value = JamSession(
+                        sessionCode = sessionCode,
+                        hostName = userName,
+                        participants = listOf(userName)
+                    )
+                } else {
+                    _currentSession.value = JamSession(
+                        sessionCode = sessionCode,
+                        hostName = "Finding host...",
+                        participants = listOf(userName)
+                    )
+                }
+                
+                // Reconnect to MQTT broker
+                connectToMqttBroker(sessionCode, userName)
+                
+                if (!isHost) {
+                    // Request current state from other participants
+                    requestCurrentState()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring session", e)
+        }
     }
 }

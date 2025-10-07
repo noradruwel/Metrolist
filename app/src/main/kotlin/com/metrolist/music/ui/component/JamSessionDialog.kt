@@ -67,7 +67,7 @@ fun JamSessionDialog(
             },
             title = {
                 Text(
-                    text = "Spotify Jam",
+                    text = "Jam",
                     style = MaterialTheme.typography.titleLarge
                 )
             },
@@ -211,11 +211,26 @@ fun JamSessionDialog(
                             style = MaterialTheme.typography.bodyMedium
                         )
                         
-                        Text(
-                            text = "${session.participants.size} participant(s)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                text = "Participants (${session.participants.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            session.participants.forEach { participant ->
+                                Text(
+                                    text = "• $participant",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
                         
                         Spacer(modifier = Modifier.height(8.dp))
                         
