@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +41,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.metrolist.music.R
+import com.metrolist.music.constants.AccountNameKey
 import com.metrolist.music.utils.JamSessionManager
+import com.metrolist.music.utils.dataStore
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun JamSessionDialog(
@@ -54,6 +59,16 @@ fun JamSessionDialog(
     var userName by remember { mutableStateOf("") }
     var sessionCode by remember { mutableStateOf("") }
     var showJoinDialog by remember { mutableStateOf(false) }
+    
+    // Automatically load account name if logged in
+    LaunchedEffect(Unit) {
+        val accountName = context.dataStore.data
+            .map { it[AccountNameKey] ?: "" }
+            .first()
+        if (accountName.isNotBlank()) {
+            userName = accountName
+        }
+    }
     
     if (currentSession == null) {
         // Not in a session - show create/join options
@@ -86,15 +101,27 @@ fun JamSessionDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     if (showJoinDialog) {
-                        OutlinedTextField(
-                            value = userName,
-                            onValueChange = { userName = it },
-                            label = { Text("Your Name") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // Only show name input if no account name is available
+                        if (userName.isBlank()) {
+                            OutlinedTextField(
+                                value = userName,
+                                onValueChange = { userName = it },
+                                label = { Text("Your Name") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                        } else {
+                            Text(
+                                text = "Joining as: $userName",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                         
                         OutlinedTextField(
                             value = sessionCode,
@@ -111,8 +138,9 @@ fun JamSessionDialog(
                         
                         Button(
                             onClick = {
-                                if (userName.isNotBlank() && sessionCode.isNotBlank()) {
-                                    val success = jamSessionManager.joinSession(sessionCode, userName)
+                                val finalUserName = userName.ifBlank { "Guest" }
+                                if (sessionCode.isNotBlank()) {
+                                    val success = jamSessionManager.joinSession(sessionCode, finalUserName)
                                     if (success) {
                                         Toast.makeText(context, "Joined session $sessionCode", Toast.LENGTH_SHORT).show()
                                         onDismiss()
@@ -121,7 +149,7 @@ fun JamSessionDialog(
                                     }
                                 }
                             },
-                            enabled = userName.isNotBlank() && sessionCode.isNotBlank(),
+                            enabled = sessionCode.isNotBlank(),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Join Session")
@@ -136,7 +164,8 @@ fun JamSessionDialog(
                     } else {
                         Button(
                             onClick = {
-                                val code = jamSessionManager.createSession("Host")
+                                val hostName = userName.ifBlank { "Host" }
+                                val code = jamSessionManager.createSession(hostName)
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("Session Code", code)
                                 clipboard.setPrimaryClip(clip)

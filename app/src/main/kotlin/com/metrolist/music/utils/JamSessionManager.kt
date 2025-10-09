@@ -132,8 +132,12 @@ class JamSessionManager(private val context: Context) {
             // Connect to MQTT broker and subscribe to topic
             connectToMqttBroker(sessionCode.uppercase(), userName)
             
-            // Request current state from other participants
-            requestCurrentState()
+            // Request current state from other participants with a small delay
+            // to ensure MQTT connection is established
+            scope.launch {
+                kotlinx.coroutines.delay(1000) // Wait 1 second for connection
+                requestCurrentState()
+            }
             
             return true
         } catch (e: Exception) {
@@ -243,6 +247,9 @@ class JamSessionManager(private val context: Context) {
                 
                 mqttClient?.connect(options)
                 mqttClient?.subscribe(currentTopic, 1)
+                
+                // Small delay to ensure subscription is fully established
+                kotlinx.coroutines.delay(500)
                 
                 // Announce presence
                 val presenceMessage = if (_isHost.value) {
@@ -392,11 +399,15 @@ class JamSessionManager(private val context: Context) {
      */
     private fun broadcastCurrentState() {
         _currentSession.value?.let { session ->
-            // Broadcast current playback state
-            if (session.currentSongId != null) {
-                broadcastUpdate(session.currentSongId, session.currentPosition, session.isPlaying, session.queueSongIds)
-            }
-            // Broadcast current queue
+            // Always broadcast current playback state, even if no song is playing
+            // This ensures new joiners get the current state immediately
+            broadcastUpdate(
+                session.currentSongId, 
+                session.currentPosition, 
+                session.isPlaying, 
+                session.queueSongIds
+            )
+            // Also broadcast current queue if it exists
             if (session.queueSongIds.isNotEmpty()) {
                 broadcastQueue(session.queueSongIds)
             }
