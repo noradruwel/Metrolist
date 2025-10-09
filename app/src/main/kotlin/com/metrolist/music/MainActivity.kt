@@ -166,6 +166,7 @@ import com.metrolist.music.ui.component.AccountSettingsDialog
 import com.metrolist.music.ui.component.BottomSheetMenu
 import com.metrolist.music.ui.component.BottomSheetPage
 import com.metrolist.music.ui.component.IconButton
+import com.metrolist.music.ui.component.JamSessionDialog
 import com.metrolist.music.ui.component.LocalBottomSheetPageState
 import com.metrolist.music.ui.component.LocalMenuState
 import com.metrolist.music.ui.component.TopSearch
@@ -727,6 +728,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     var showAccountDialog by remember { mutableStateOf(false) }
+                    var showJamSessionDialog by remember { mutableStateOf(false) }
 
                     val baseBg = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
                     val insetBg = if (playerBottomSheetState.progress > 0f) Color.Transparent else baseBg
@@ -762,6 +764,18 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             },
                                             actions = {
+                                                IconButton(onClick = { showJamSessionDialog = true }) {
+                                                    BadgedBox(badge = {
+                                                        if (playerConnection?.jamSessionManager?.isInSession() == true) {
+                                                            Badge()
+                                                        }
+                                                    }) {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.radio),
+                                                            contentDescription = "Jam Session"
+                                                        )
+                                                    }
+                                                }
                                                 IconButton(onClick = { navController.navigate("history") }) {
                                                     Icon(
                                                         painter = painterResource(R.drawable.history),
@@ -1238,6 +1252,15 @@ class MainActivity : ComponentActivity() {
                                 },
                                 latestVersionName = latestVersionName
                             )
+                        }
+
+                        if (showJamSessionDialog) {
+                            playerConnection?.let {
+                                JamSessionDialog(
+                                    jamSessionManager = it.jamSessionManager,
+                                    onDismiss = { showJamSessionDialog = false }
+                                )
+                            }
                         }
 
                         sharedSong?.let { song ->
