@@ -146,6 +146,7 @@ fun Queue(
     textButtonColor: Color,
     iconButtonColor: Color,
     onShowLyrics: () -> Unit = {},
+    onShowJamSession: () -> Unit = {},
     pureBlack: Boolean,
 ) {
     val context = LocalContext.current
@@ -317,6 +318,40 @@ fun Queue(
                             contentDescription = null,
                             modifier = Modifier.size(iconSize),
                             tint = TextBackgroundColor
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(buttonSize)
+                            .clip(RoundedCornerShape(5.dp))
+                            .border(
+                                1.dp,
+                                if (playerConnection.jamSessionManager.isInSession()) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    borderColor,
+                                RoundedCornerShape(5.dp)
+                            )
+                            .background(
+                                if (playerConnection.jamSessionManager.isInSession())
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                else
+                                    Color.Transparent
+                            )
+                            .clickable {
+                                onShowJamSession()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.radio),
+                            contentDescription = "Jam Session",
+                            modifier = Modifier.size(iconSize),
+                            tint = if (playerConnection.jamSessionManager.isInSession())
+                                MaterialTheme.colorScheme.primary
+                            else
+                                TextBackgroundColor
                         )
                     }
 

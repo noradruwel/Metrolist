@@ -1,6 +1,7 @@
 package com.metrolist.music.playback
 
 import android.content.Context
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -15,6 +16,8 @@ import com.metrolist.music.extensions.currentMetadata
 import com.metrolist.music.extensions.getCurrentQueueIndex
 import com.metrolist.music.extensions.getQueueWindows
 import com.metrolist.music.extensions.metadata
+import com.metrolist.music.extensions.toMediaItem
+import com.metrolist.music.models.toMediaMetadata
 import com.metrolist.music.playback.MusicService.MusicBinder
 import com.metrolist.music.playback.queues.Queue
 import com.metrolist.music.utils.JamSessionManager
@@ -204,6 +207,23 @@ class PlayerConnection(
         }
     }
 
+    override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+    ) {
+        // Sync manual seek operations to jam session
+        // Only broadcast if this was a manual seek (not triggered by sync)
+        if (jamSessionManager.isInSession() && !isSyncing && 
+            reason == Player.DISCONTINUITY_REASON_SEEK) {
+            jamSessionManager.updatePlaybackState(
+                mediaMetadata.value?.id,
+                player.currentPosition,
+                player.playWhenReady
+            )
+        }
+    }
+
     override fun onTimelineChanged(
         timeline: Timeline,
         reason: Int,
@@ -275,6 +295,8 @@ class PlayerConnection(
     private suspend fun syncPlaybackState() {
         var lastSyncedSongId: String? = null
         var lastSyncedQueueHash: Int = 0
+        var lastSyncedPlayState: Boolean? = null
+        var isFirstSync = true
         
         jamSessionManager.currentSession.collect { session ->
             if (session != null) {
@@ -289,7 +311,15 @@ class PlayerConnection(
                             // Find and play the song in the queue
                             for (i in 0 until player.mediaItemCount) {
                                 if (player.getMediaItemAt(i).metadata?.id == session.currentSongId) {
-                                    player.seekTo(i, session.currentPosition)
+                                    // When changing songs, start from beginning (position 0)
+                                    // Only use session.currentPosition if it's a small value (< 5 seconds)
+                                    // to handle cases where the song just started
+                                    val startPosition = if (session.currentPosition < 5000) {
+                                        session.currentPosition
+                                    } else {
+                                        0L
+                                    }
+                                    player.seekTo(i, startPosition)
                                     player.playWhenReady = session.isPlaying
                                     break
                                 }
@@ -297,24 +327,93 @@ class PlayerConnection(
                         }
                     }
                     
-                    // Sync position if difference is more than 2 seconds
+                    // Sync position if difference is more than 2 seconds (only for the same song)
                     val positionDiff = kotlin.math.abs(player.currentPosition - session.currentPosition)
                     if (positionDiff > 2000 && session.currentSongId == currentSongId) {
                         player.seekTo(session.currentPosition)
                     }
                     
-                    // Sync play/pause state
-                    if (session.isPlaying != player.playWhenReady) {
-                        player.playWhenReady = session.isPlaying
+                    // Sync play/pause state only if it's not the first sync or if it actually changed
+                    // This prevents pausing music when restoring a session
+                    if (!isFirstSync && session.isPlaying != lastSyncedPlayState) {
+                        if (session.isPlaying != player.playWhenReady) {
+                            player.playWhenReady = session.isPlaying
+                        }
                     }
+                    lastSyncedPlayState = session.isPlaying
+                    isFirstSync = false
                     
                     // Sync queue if changed
                     val queueHash = session.queueSongIds.hashCode()
                     if (queueHash != lastSyncedQueueHash && session.queueSongIds.isNotEmpty()) {
                         lastSyncedQueueHash = queueHash
-                        // Queue sync would require access to the song database
-                        // For now, just log it
-                        // TODO: Implement queue synchronization with database access
+                        // Load songs from database and update player queue
+                        try {
+                            val songs = database.getSongsByIds(session.queueSongIds)
+                            
+                            // Identify missing songs
+                            val missingSongIds = session.queueSongIds.filter { songId ->
+                                songs.none { it.song.id == songId }
+                            }
+                            
+                            // Fetch missing songs from YouTube if any
+                            if (missingSongIds.isNotEmpty()) {
+                                Log.i("PlayerConnection", "Fetching ${missingSongIds.size} missing songs from YouTube")
+                                try {
+                                    com.metrolist.innertube.YouTube.queue(missingSongIds).onSuccess { fetchedSongs ->
+                                        // Insert fetched songs into database
+                                        fetchedSongs.forEach { songItem ->
+                                            try {
+                                                database.transaction {
+                                                    insert(songItem.toMediaMetadata())
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e("PlayerConnection", "Error inserting song ${songItem.id}", e)
+                                            }
+                                        }
+                                        Log.i("PlayerConnection", "Successfully fetched and inserted ${fetchedSongs.size} songs")
+                                    }.onFailure { error ->
+                                        Log.e("PlayerConnection", "Failed to fetch missing songs from YouTube", error)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("PlayerConnection", "Error fetching songs from YouTube", e)
+                                }
+                            }
+                            
+                            // Reload songs from database after fetching missing ones
+                            val allSongs = database.getSongsByIds(session.queueSongIds)
+                            
+                            // Maintain the order from the session
+                            val orderedSongs = session.queueSongIds.mapNotNull { songId ->
+                                allSongs.find { it.song.id == songId }
+                            }
+                            
+                            // Log any songs that are still missing
+                            val stillMissing = session.queueSongIds.filter { songId ->
+                                allSongs.none { it.song.id == songId }
+                            }
+                            if (stillMissing.isNotEmpty()) {
+                                Log.w("PlayerConnection", "Still missing ${stillMissing.size} songs after YouTube fetch: ${stillMissing.take(3)}")
+                            }
+                            
+                            if (orderedSongs.isNotEmpty()) {
+                                val mediaItems = orderedSongs.map { it.toMediaItem() }
+                                player.setMediaItems(mediaItems, false)
+                                // Find the current song index and seek to it
+                                session.currentSongId?.let { currentSongId ->
+                                    val currentIndex = orderedSongs.indexOfFirst { it.song.id == currentSongId }
+                                    if (currentIndex >= 0) {
+                                        player.seekTo(currentIndex, session.currentPosition)
+                                        player.playWhenReady = session.isPlaying
+                                    }
+                                }
+                                player.prepare()
+                            } else {
+                                Log.w("PlayerConnection", "No songs from queue found even after YouTube fetch")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("PlayerConnection", "Error syncing queue", e)
+                        }
                     }
                 } finally {
                     isSyncing = false // Re-enable broadcasting after sync

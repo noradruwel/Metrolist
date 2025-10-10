@@ -688,35 +688,7 @@ fun BottomSheetPlayer(
                             )
                         }
 
-                        // Jam Session button for new design
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(
-                                    if (playerConnection.jamSessionManager.isInSession()) 
-                                        MaterialTheme.colorScheme.primaryContainer 
-                                    else 
-                                        textButtonColor
-                                )
-                                .clickable {
-                                    showJamSessionDialog = true
-                                }
-                        ) {
-                            Image(
-                                painter = painterResource(R.drawable.account),
-                                contentDescription = "Jam Session",
-                                colorFilter = ColorFilter.tint(
-                                    if (playerConnection.jamSessionManager.isInSession()) 
-                                        MaterialTheme.colorScheme.onPrimaryContainer 
-                                    else 
-                                        iconButtonColor
-                                ),
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .size(24.dp)
-                            )
-                        }
+
                     }
                 } else {
                     Box(
@@ -742,41 +714,6 @@ fun BottomSheetPlayer(
                             painter = painterResource(R.drawable.share),
                             contentDescription = null,
                             colorFilter = ColorFilter.tint(iconButtonColor),
-                            modifier =
-                            Modifier
-                                .align(Alignment.Center)
-                                .size(24.dp),
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.size(12.dp))
-
-                    // Jam Session button
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier =
-                        Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(
-                                if (playerConnection.jamSessionManager.isInSession()) 
-                                    MaterialTheme.colorScheme.primaryContainer 
-                                else 
-                                    textButtonColor
-                            )
-                            .clickable {
-                                showJamSessionDialog = true
-                            },
-                    ) {
-                        Image(
-                            painter = painterResource(R.drawable.account),
-                            contentDescription = "Jam Session",
-                            colorFilter = ColorFilter.tint(
-                                if (playerConnection.jamSessionManager.isInSession()) 
-                                    MaterialTheme.colorScheme.onPrimaryContainer 
-                                else 
-                                    iconButtonColor
-                            ),
                             modifier =
                             Modifier
                                 .align(Alignment.Center)
@@ -1262,6 +1199,7 @@ fun BottomSheetPlayer(
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,
             onShowLyrics = { lyricsSheetState.expandSoft() },
+            onShowJamSession = { showJamSessionDialog = true },
             pureBlack = pureBlack,
         )
 
