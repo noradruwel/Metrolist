@@ -311,7 +311,15 @@ class PlayerConnection(
                             // Find and play the song in the queue
                             for (i in 0 until player.mediaItemCount) {
                                 if (player.getMediaItemAt(i).metadata?.id == session.currentSongId) {
-                                    player.seekTo(i, session.currentPosition)
+                                    // When changing songs, start from beginning (position 0)
+                                    // Only use session.currentPosition if it's a small value (< 5 seconds)
+                                    // to handle cases where the song just started
+                                    val startPosition = if (session.currentPosition < 5000) {
+                                        session.currentPosition
+                                    } else {
+                                        0L
+                                    }
+                                    player.seekTo(i, startPosition)
                                     player.playWhenReady = session.isPlaying
                                     break
                                 }
@@ -319,7 +327,7 @@ class PlayerConnection(
                         }
                     }
                     
-                    // Sync position if difference is more than 2 seconds
+                    // Sync position if difference is more than 2 seconds (only for the same song)
                     val positionDiff = kotlin.math.abs(player.currentPosition - session.currentPosition)
                     if (positionDiff > 2000 && session.currentSongId == currentSongId) {
                         player.seekTo(session.currentPosition)
