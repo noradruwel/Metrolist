@@ -88,14 +88,17 @@ class JamSessionManager(private val context: Context) {
     
     /**
      * Create a new jam session as host
+     * @param hostName The name of the host
+     * @param currentlyPlaying Whether music is currently playing (to maintain playback state)
      */
-    fun createSession(hostName: String): String {
+    fun createSession(hostName: String, currentlyPlaying: Boolean = false): String {
         val sessionCode = generateSessionCode()
         
         _currentSession.value = JamSession(
             sessionCode = sessionCode,
             hostName = hostName,
-            participants = listOf(hostName)
+            participants = listOf(hostName),
+            isPlaying = currentlyPlaying  // Maintain current playback state
         )
         _isHost.value = true
         currentUserName = hostName

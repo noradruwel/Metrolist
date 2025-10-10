@@ -295,6 +295,8 @@ class PlayerConnection(
     private suspend fun syncPlaybackState() {
         var lastSyncedSongId: String? = null
         var lastSyncedQueueHash: Int = 0
+        var lastSyncedPlayState: Boolean? = null
+        var isFirstSync = true
         
         jamSessionManager.currentSession.collect { session ->
             if (session != null) {
@@ -323,10 +325,15 @@ class PlayerConnection(
                         player.seekTo(session.currentPosition)
                     }
                     
-                    // Sync play/pause state
-                    if (session.isPlaying != player.playWhenReady) {
-                        player.playWhenReady = session.isPlaying
+                    // Sync play/pause state only if it's not the first sync or if it actually changed
+                    // This prevents pausing music when restoring a session
+                    if (!isFirstSync && session.isPlaying != lastSyncedPlayState) {
+                        if (session.isPlaying != player.playWhenReady) {
+                            player.playWhenReady = session.isPlaying
+                        }
                     }
+                    lastSyncedPlayState = session.isPlaying
+                    isFirstSync = false
                     
                     // Sync queue if changed
                     val queueHash = session.queueSongIds.hashCode()

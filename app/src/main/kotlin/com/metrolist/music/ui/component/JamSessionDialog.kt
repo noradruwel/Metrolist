@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.metrolist.music.LocalPlayerConnection
 import com.metrolist.music.R
 import com.metrolist.music.constants.AccountNameKey
 import com.metrolist.music.utils.JamSessionManager
@@ -53,8 +54,10 @@ fun JamSessionDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val playerConnection = LocalPlayerConnection.current
     val currentSession by jamSessionManager.currentSession.collectAsState()
     val isHost by jamSessionManager.isHost.collectAsState()
+    val isPlaying by (playerConnection?.isPlaying?.collectAsState() ?: remember { mutableStateOf(false) })
     
     var userName by remember { mutableStateOf("") }
     var sessionCode by remember { mutableStateOf("") }
@@ -165,7 +168,8 @@ fun JamSessionDialog(
                         Button(
                             onClick = {
                                 val hostName = userName.ifBlank { "Host" }
-                                val code = jamSessionManager.createSession(hostName)
+                                // Pass current playing state to maintain playback when creating session
+                                val code = jamSessionManager.createSession(hostName, isPlaying)
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("Session Code", code)
                                 clipboard.setPrimaryClip(clip)
@@ -252,8 +256,13 @@ fun JamSessionDialog(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             session.participants.forEach { participant ->
+                                val displayName = if (participant == session.hostName) {
+                                    "$participant (Host)"
+                                } else {
+                                    participant
+                                }
                                 Text(
-                                    text = "• $participant",
+                                    text = "• $displayName",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(start = 8.dp)
